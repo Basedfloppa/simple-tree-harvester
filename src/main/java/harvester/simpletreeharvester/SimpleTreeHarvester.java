@@ -4,8 +4,11 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.LeavesBlock;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.AxeItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.BlockTags;
@@ -201,14 +204,14 @@ public class SimpleTreeHarvester implements ModInitializer {
 
         for (BlockPos p : foliage) {
             if (!isBreakableFoliage(world.getBlockState(p))) continue;
-            world.breakBlock(p, true, player);
-            if (damageTool(tool, player)) break; // returns true when BROKEN; stop
+            breakBlockWithTool(world, p, player, tool);
+            if (damageTool(tool, player)) break;
             if (++broken >= CFG.maxLogs + CFG.maxFoliage) return broken;
         }
 
         for (BlockPos p : trunks) {
             if (!isTrunk(world.getBlockState(p))) continue;
-            world.breakBlock(p, true, player);
+            breakBlockWithTool(world, p, player, tool);
             if (damageTool(tool, player)) break;
             if (++broken >= CFG.maxLogs + CFG.maxFoliage) return broken;
         }
@@ -262,10 +265,24 @@ public class SimpleTreeHarvester implements ModInitializer {
         return Math.abs(n.getY() - startY) > CFG.maxVertical;
     }
 
-    // return true when tool BROKE (so caller can stop)
     private static boolean damageTool(ItemStack tool, net.minecraft.entity.player.PlayerEntity player) {
         if (player.isCreative()) return false;
         tool.damage(1, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
         return tool.isEmpty();
+    }
+
+    private static void breakBlockWithTool(ServerWorld world, BlockPos pos, PlayerEntity player, ItemStack tool) {
+        BlockState state = world.getBlockState(pos);
+        if (state.isAir()) return;
+
+        BlockEntity be = world.getBlockEntity(pos);
+
+        world.syncWorldEvent(2001, pos, Block.getRawIdFromState(state));
+
+        if (world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_TILE_DROPS)) {
+            Block.dropStacks(state, world, pos, be, player, tool);
+        }
+
+        world.setBlockState(pos, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL);
     }
 }
