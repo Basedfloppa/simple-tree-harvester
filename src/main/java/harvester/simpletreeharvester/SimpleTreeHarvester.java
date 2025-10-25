@@ -12,7 +12,6 @@ import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 import net.minecraft.block.Blocks;
 
@@ -30,9 +29,20 @@ public class SimpleTreeHarvester implements ModInitializer {
 
     private static final Set<UUID> FELLING = ConcurrentHashMap.newKeySet();
 
-    private static final Direction[] TRUNK_DIRECTIONS = {
-            Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.DOWN
-    };
+    private static final int[][] NEIGHBOR_DELTAS_26 = buildNeighborDeltas26();
+
+    private static int[][] buildNeighborDeltas26() {
+        List<int[]> deltas = new ArrayList<>(26);
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+                    deltas.add(new int[]{dx, dy, dz});
+                }
+            }
+        }
+        return deltas.toArray(new int[0][]);
+    }
 
     @Override
     public void onInitialize() {
@@ -130,8 +140,8 @@ public class SimpleTreeHarvester implements ModInitializer {
             foliageSeen += countFoliageAround(world, cur, CFG.leafCheckRadius, CFG.minLeaves - foliageSeen);
             if (foliageSeen >= CFG.minLeaves) return true;
 
-            for (Direction d : TRUNK_DIRECTIONS) {
-                BlockPos pos = cur.add(d.getVector());
+            for (int[] d : NEIGHBOR_DELTAS_26) {
+                BlockPos pos = cur.add(d[0], d[1], d[2]);
                 if (seen.add(pos)) stack.push(pos);
             }
         }
@@ -174,8 +184,8 @@ public class SimpleTreeHarvester implements ModInitializer {
 
             trunks.add(cur.toImmutable());
 
-            for (Direction d : Direction.values()) {
-                BlockPos n = cur.offset(d);
+            for (int[] d : NEIGHBOR_DELTAS_26) {
+                BlockPos n = cur.add(d[0], d[1], d[2]);
                 if (!visited.add(n)) continue;
                 if (outOfBounds(world, start, n, startY)) continue;
                 if (isTrunk(world.getBlockState(n))) q.add(n);
@@ -235,8 +245,8 @@ public class SimpleTreeHarvester implements ModInitializer {
             if (!isBreakableFoliage(world.getBlockState(cur))) continue;
             foliage.add(cur);
 
-            for (Direction d : Direction.values()) {
-                BlockPos n = cur.offset(d);
+            for (int[] d : NEIGHBOR_DELTAS_26) {
+                BlockPos n = cur.add(d[0], d[1], d[2]);
                 if (!seen.add(n)) continue;
                 if (outOfBounds((ServerWorld) world, start, n, startY)) continue;
                 if (isBreakableFoliage(world.getBlockState(n))) q.add(n);
