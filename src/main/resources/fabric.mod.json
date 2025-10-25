@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "simple-tree-harvester",
+  "version": "${version}",
+  "name": "Simple Tree Harvester",
+  "description": "This is a simple tree harvesting mod.",
+  "authors": [
+    "Basedfloppa"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": "https://github.com/Basedfloppa/simple-tree-harvester"
+  },
+  "license": "MIT",
+  "icon": "assets/simple-tree-harvester/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "harvester.simpletreeharvester.SimpleTreeHarvester"
+    ],
+    "client": [
+      "harvester.simpletreeharvester.ClientInit"
+    ],
+    "modmenu": [
+      "harvester.simpletreeharvester.ModMenuCompat"
+    ]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "cloth-config": ">=15.0.130",
+    "mod-menu": ">=11.0.1"
+  }
+}
