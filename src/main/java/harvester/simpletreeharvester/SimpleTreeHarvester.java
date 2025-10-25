@@ -28,7 +28,7 @@ public class SimpleTreeHarvester implements ModInitializer {
     public static final String MOD_ID = "simple-tree-harvester";
 
     public static ConfigManager CONFIG_MGR;
-    public static Config CFG; // read everywhere
+    public static Config CFG;
 
     private static final Set<UUID> FELLING = ConcurrentHashMap.newKeySet();
 
@@ -49,13 +49,11 @@ public class SimpleTreeHarvester implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        // 1) Load config from config/simple-tree-harvester.json
         Path cfgDir = FabricLoader.getInstance().getConfigDir();
         CONFIG_MGR = new ConfigManager(cfgDir, MOD_ID + ".json");
         CONFIG_MGR.loadOrCreate();
         CFG = CONFIG_MGR.get();
 
-        // 2) Register a simple /sth reload to re-read the file at runtime
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> dispatcher.register(literal("sth")
                 .requires(src -> src.hasPermissionLevel(2))
                 .then(literal("reload").executes(ctx -> {
@@ -66,7 +64,6 @@ public class SimpleTreeHarvester implements ModInitializer {
                 }))
         ));
 
-        // 3) Use config values in logic
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
             if (world.isClient()) return true;
             if (player.isCreative() || player.isSpectator()) return true;
@@ -81,16 +78,13 @@ public class SimpleTreeHarvester implements ModInitializer {
 
             try {
                 FELLING.add(player.getUuid());
-                int broken = fellStructure((ServerWorld) world, pos, player, stack);
-                if (broken > 0) return false;
+                if (fellStructure((ServerWorld) world, pos, player, stack)) return false;
             } finally {
                 FELLING.remove(player.getUuid());
             }
             return true;
         });
     }
-
-    // ===== Predicates use CFG =====
 
     private static boolean isTrunk(BlockState s) {
         if (s.isIn(BlockTags.LOGS)) return true;
@@ -118,8 +112,6 @@ public class SimpleTreeHarvester implements ModInitializer {
             return true;
         return (CFG.breakChorusFlowers && s.isOf(Blocks.CHORUS_FLOWER));
     }
-
-    // ===== Use CFG.* instead of constants =====
 
     private static boolean hasFoliageAlongTrunk(World world, BlockPos start) {
         final int startY = start.getY();
@@ -168,7 +160,7 @@ public class SimpleTreeHarvester implements ModInitializer {
         return found;
     }
 
-    private static int fellStructure(ServerWorld world, BlockPos start, net.minecraft.entity.player.PlayerEntity player, ItemStack tool) {
+    private static boolean fellStructure(ServerWorld world, BlockPos start, net.minecraft.entity.player.PlayerEntity player, ItemStack tool) {
         final int startY = start.getY();
 
         Queue<BlockPos> q = new ArrayDeque<>();
@@ -200,23 +192,21 @@ public class SimpleTreeHarvester implements ModInitializer {
         foliage.sort(Comparator.comparingInt(BlockPos::getY).reversed());
         trunks.sort(Comparator.comparingInt(BlockPos::getY).reversed());
 
-        int broken = 0;
-
-        for (BlockPos p : foliage) {
-            if (!isBreakableFoliage(world.getBlockState(p))) continue;
-            breakBlockWithTool(world, p, player, tool);
-            if (damageTool(tool, player)) break;
-            if (++broken >= CFG.maxLogs + CFG.maxFoliage) return broken;
-        }
-
+        int brokenLogs = 0;
         for (BlockPos p : trunks) {
             if (!isTrunk(world.getBlockState(p))) continue;
-            breakBlockWithTool(world, p, player, tool);
-            if (damageTool(tool, player)) break;
-            if (++broken >= CFG.maxLogs + CFG.maxFoliage) return broken;
+            if (breakBlockWithTool(world, p, player, tool)) break;
+            if (++brokenLogs >= CFG.maxLogs) return true;
         }
 
-        return broken;
+        int brokenFoliage = 0;
+        for (BlockPos p : foliage) {
+            if (!isBreakableFoliage(world.getBlockState(p))) continue;
+            if (breakBlockWithTool(world, p, player, tool)) break;
+            if (++brokenFoliage >= CFG.maxFoliage) return true;
+        }
+
+        return (brokenLogs + brokenFoliage) > 0;
     }
 
     private static List<BlockPos> collectFoliageTouchingTrunk(World world, List<BlockPos> trunks, BlockPos start, int startY) {
@@ -265,24 +255,24 @@ public class SimpleTreeHarvester implements ModInitializer {
         return Math.abs(n.getY() - startY) > CFG.maxVertical;
     }
 
-    private static boolean damageTool(ItemStack tool, net.minecraft.entity.player.PlayerEntity player) {
-        if (player.isCreative()) return false;
-        tool.damage(1, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
-        return tool.isEmpty();
-    }
-
-    private static void breakBlockWithTool(ServerWorld world, BlockPos pos, PlayerEntity player, ItemStack tool) {
+    private static boolean breakBlockWithTool(ServerWorld world, BlockPos pos, PlayerEntity player, ItemStack tool) {
         BlockState state = world.getBlockState(pos);
-        if (state.isAir()) return;
+        if (state.isAir()) return false;
 
         BlockEntity be = world.getBlockEntity(pos);
 
         world.syncWorldEvent(2001, pos, Block.getRawIdFromState(state));
 
-        if (world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_TILE_DROPS)) {
-            Block.dropStacks(state, world, pos, be, player, tool);
+        if (!world.breakBlock(pos, false, player)) return false;
+
+        if (player.canHarvest(state)) {
+            state.getBlock().afterBreak(world, player, pos, state, be, tool);
+        } else {
+            state.getBlock().onBroken(world, pos, state);
         }
 
-        world.setBlockState(pos, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL);
+        tool.postMine(world, state, pos, player);
+
+        return tool.isEmpty();
     }
 }
