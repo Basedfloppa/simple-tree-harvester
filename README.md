@@ -24,14 +24,17 @@ Example:
 {
   "maxLogs": 128,
   "maxFoliage": 512,
+  "ignoreLimits": false,
   "maxRadius": 8,
   "maxVertical": 48,
+  "clumpDrops": false,
+  "placeItemsInInventory": false,
   "requireFoliageAlongTrunk": true,
   "leafCheckRadius": 3,
   "minLeaves": 3,
-  "breakOverworldLeaves": true,
-  "breakNetherWartAndShroomlight": true,
-  "breakMushroomCaps": true,
+  "breakOverworldLeaves": false,
+  "breakNetherWartAndShroomlight": false,
+  "breakMushroomCaps": false,
   "breakChorusFlowers": true,
   "foliageSeedNeighborRadius": 1
 }

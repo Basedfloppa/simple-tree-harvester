@@ -26,6 +26,10 @@ public final class HarvesterConfigFactory {
                 .setDefaultValue(512).setMin(1).setMax(4096)
                 .setSaveConsumer(v -> working.maxFoliage = v).build());
 
+        limits.addEntry(eb.startBooleanToggle(Text.literal("Ignore Logs and Foliage Limits"), working.ignoreLimits)
+                .setDefaultValue(false)
+                .setSaveConsumer(v -> working.ignoreLimits = v).build());
+
         limits.addEntry(eb.startIntField(Text.literal("Max Radius"), working.maxRadius)
                 .setDefaultValue(8).setMin(1).setMax(4096)
                 .setSaveConsumer(v -> working.maxRadius = v).build());
@@ -33,6 +37,14 @@ public final class HarvesterConfigFactory {
         limits.addEntry(eb.startIntField(Text.literal("Max Vertical"), working.maxVertical)
                 .setDefaultValue(48).setMin(1).setMax(4096)
                 .setSaveConsumer(v -> working.maxVertical = v).build());
+
+        limits.addEntry(eb.startBooleanToggle(Text.literal("Clump Drops"), working.clumpDrops)
+                .setDefaultValue(false)
+                .setSaveConsumer(v -> working.clumpDrops = v).build());
+
+        limits.addEntry(eb.startBooleanToggle(Text.literal("Place Items In Inventory"), working.placeItemsInInventory)
+                .setDefaultValue(false)
+                .setSaveConsumer(v -> working.placeItemsInInventory = v).build());
 
         limits.addEntry(eb.startBooleanToggle(Text.literal("Require Foliage Along Trunk"), working.requireFoliageAlongTrunk)
                 .setDefaultValue(true)
@@ -47,19 +59,19 @@ public final class HarvesterConfigFactory {
                 .setSaveConsumer(v -> working.minLeaves = v).build());
 
         limits.addEntry(eb.startBooleanToggle(Text.literal("Break Chorus Flowers"), working.breakChorusFlowers)
-                .setDefaultValue(true)
+                .setDefaultValue(false)
                 .setSaveConsumer(v -> working.breakChorusFlowers = v).build());
 
         limits.addEntry(eb.startBooleanToggle(Text.literal("Break Mushroom Caps"), working.breakMushroomCaps)
-                .setDefaultValue(true)
+                .setDefaultValue(false)
                 .setSaveConsumer(v -> working.breakMushroomCaps = v).build());
 
         limits.addEntry(eb.startBooleanToggle(Text.literal("Break Overworld Leaves"), working.breakOverworldLeaves)
-                .setDefaultValue(true)
+                .setDefaultValue(false)
                 .setSaveConsumer(v -> working.breakOverworldLeaves = v).build());
 
         limits.addEntry(eb.startBooleanToggle(Text.literal("Break Nether Wart And Shroom Lights"), working.breakNetherWartAndShroomlight)
-                .setDefaultValue(true)
+                .setDefaultValue(false)
                 .setSaveConsumer(v -> working.breakNetherWartAndShroomlight = v).build());
 
         limits.addEntry(eb.startIntField(Text.literal("Foliage Seed Neighbor Radius"), working.foliageSeedNeighborRadius)
@@ -73,8 +85,11 @@ public final class HarvesterConfigFactory {
         Config x = new Config();
         x.maxLogs = c.maxLogs;
         x.maxFoliage = c.maxFoliage;
+        x.ignoreLimits = c.ignoreLimits;
         x.maxRadius = c.maxRadius;
         x.maxVertical = c.maxVertical;
+        x.clumpDrops = c.clumpDrops;
+        x.placeItemsInInventory = c.placeItemsInInventory;
         x.requireFoliageAlongTrunk = c.requireFoliageAlongTrunk;
         x.leafCheckRadius = c.leafCheckRadius;
         x.minLeaves = c.minLeaves;

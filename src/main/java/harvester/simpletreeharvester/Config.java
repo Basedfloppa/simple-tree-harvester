@@ -4,8 +4,11 @@ public class Config {
     // Limits / tuning
     public int maxLogs = 128;
     public int maxFoliage = 512;
+    public boolean ignoreLimits = false;
     public int maxRadius = 8;
     public int maxVertical = 48;
+    public boolean clumpDrops = false;
+    public boolean placeItemsInInventory = false;
 
     // Validation
     public boolean requireFoliageAlongTrunk = true;
@@ -13,10 +16,10 @@ public class Config {
     public int minLeaves = 3;
 
     // Behavior toggles
-    public boolean breakOverworldLeaves = true;
-    public boolean breakNetherWartAndShroomlight = true;
-    public boolean breakMushroomCaps = true;
-    public boolean breakChorusFlowers = true;
+    public boolean breakOverworldLeaves = false;
+    public boolean breakNetherWartAndShroomlight = false;
+    public boolean breakMushroomCaps = false;
+    public boolean breakChorusFlowers = false;
 
     // Foliage seeding
     public int foliageSeedNeighborRadius = 1;

@@ -1,5 +1,6 @@
 package harvester.simpletreeharvester;
 
+import me.shedaniel.cloth.clothconfig.shadowed.blue.endless.jankson.annotation.Nullable;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
@@ -14,12 +15,15 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
+import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.block.Blocks;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static net.minecraft.server.command.CommandManager.literal;
@@ -123,7 +127,7 @@ public class SimpleTreeHarvester implements ModInitializer {
         int logsVisited = 0;
         int foliageSeen = 0;
 
-        while (!stack.isEmpty() && logsVisited < CFG.maxLogs) {
+        while (!stack.isEmpty() && (CFG.ignoreLimits || logsVisited < CFG.maxLogs)) {
             BlockPos cur = stack.pop();
             if (outOfBounds((ServerWorld) world, start, cur, startY)) continue;
 
@@ -133,7 +137,7 @@ public class SimpleTreeHarvester implements ModInitializer {
             logsVisited++;
 
             foliageSeen += countFoliageAround(world, cur, CFG.leafCheckRadius, CFG.minLeaves - foliageSeen);
-            if (foliageSeen >= CFG.minLeaves) return true;
+            if (!CFG.ignoreLimits && foliageSeen >= CFG.minLeaves) return true;
 
             for (int[] d : NEIGHBOR_DELTAS_26) {
                 BlockPos pos = cur.add(d[0], d[1], d[2]);
@@ -160,7 +164,7 @@ public class SimpleTreeHarvester implements ModInitializer {
         return found;
     }
 
-    private static boolean fellStructure(ServerWorld world, BlockPos start, net.minecraft.entity.player.PlayerEntity player, ItemStack tool) {
+    private static boolean fellStructure(ServerWorld world, BlockPos start, PlayerEntity player, ItemStack tool) {
         final int startY = start.getY();
 
         Queue<BlockPos> q = new ArrayDeque<>();
@@ -170,7 +174,7 @@ public class SimpleTreeHarvester implements ModInitializer {
 
         List<BlockPos> trunks = new ArrayList<>();
 
-        while (!q.isEmpty() && trunks.size() < CFG.maxLogs) {
+        while (!q.isEmpty() && (CFG.ignoreLimits || trunks.size() < CFG.maxLogs)) {
             BlockPos cur = q.poll();
             if (outOfBounds(world, start, cur, startY)) continue;
 
@@ -192,18 +196,33 @@ public class SimpleTreeHarvester implements ModInitializer {
         foliage.sort(Comparator.comparingInt(BlockPos::getY).reversed());
         trunks.sort(Comparator.comparingInt(BlockPos::getY).reversed());
 
+        List<ItemStack> allDrops = CFG.clumpDrops ? new ArrayList<>() : null;
+
         int brokenLogs = 0;
+        int brokenFoliage = 0;
+
         for (BlockPos p : trunks) {
+            if (tool.isEmpty()) break;
+
             if (!isTrunk(world.getBlockState(p))) continue;
-            if (breakBlockWithTool(world, p, player, tool)) break;
-            if (++brokenLogs >= CFG.maxLogs) return true;
+
+            if (breakBlockWithTool(world, p, player, tool, allDrops)) break;
+            if (!CFG.ignoreLimits && ++brokenLogs >= CFG.maxLogs) break;
         }
 
-        int brokenFoliage = 0;
         for (BlockPos p : foliage) {
+            if (tool.isEmpty()) break;
+
             if (!isBreakableFoliage(world.getBlockState(p))) continue;
-            if (breakBlockWithTool(world, p, player, tool)) break;
-            if (++brokenFoliage >= CFG.maxFoliage) return true;
+
+            if (breakBlockWithTool(world, p, player, tool, allDrops)) break;
+            if (!CFG.ignoreLimits && ++brokenFoliage >= CFG.maxFoliage) break;
+        }
+
+        // spawn clumps
+        if (CFG.clumpDrops && allDrops != null && !allDrops.isEmpty()) {
+            List<ItemStack> merged = clumpStacks(allDrops);
+            spawnStacks(world, start, merged, player);
         }
 
         return (brokenLogs + brokenFoliage) > 0;
@@ -211,7 +230,7 @@ public class SimpleTreeHarvester implements ModInitializer {
 
     private static List<BlockPos> collectFoliageTouchingTrunk(World world, List<BlockPos> trunks, BlockPos start, int startY) {
         List<BlockPos> foliage = new ArrayList<>();
-        if (trunks.isEmpty() || CFG.maxFoliage <= 0) return foliage;
+        if (trunks.isEmpty() || (!CFG.ignoreLimits && CFG.maxFoliage <= 0)) return foliage;
 
         Deque<BlockPos> q = new ArrayDeque<>();
         Set<BlockPos> seen = new HashSet<>();
@@ -233,7 +252,7 @@ public class SimpleTreeHarvester implements ModInitializer {
             }
         }
 
-        while (!q.isEmpty() && foliage.size() < CFG.maxFoliage) {
+        while (!q.isEmpty() && (CFG.ignoreLimits || foliage.size() < CFG.maxFoliage)) {
             BlockPos cur = q.poll();
             if (!isBreakableFoliage(world.getBlockState(cur))) continue;
             foliage.add(cur);
@@ -255,18 +274,35 @@ public class SimpleTreeHarvester implements ModInitializer {
         return Math.abs(n.getY() - startY) > CFG.maxVertical;
     }
 
-    private static boolean breakBlockWithTool(ServerWorld world, BlockPos pos, PlayerEntity player, ItemStack tool) {
+    private static boolean breakBlockWithTool(ServerWorld world,
+                                              BlockPos pos,
+                                              PlayerEntity player,
+                                              ItemStack tool,
+                                              List<ItemStack> dropAccumulator) {
         BlockState state = world.getBlockState(pos);
         if (state.isAir()) return false;
 
         BlockEntity be = world.getBlockEntity(pos);
 
+        // particles and sound
         world.syncWorldEvent(2001, pos, Block.getRawIdFromState(state));
 
+        // remove block
         if (!world.breakBlock(pos, false, player)) return false;
 
         if (player.canHarvest(state)) {
-            state.getBlock().afterBreak(world, player, pos, state, be, tool);
+            List<ItemStack> drops = Block.getDroppedStacks(state, world, pos, be, player, tool);
+
+            if (CFG.clumpDrops) {
+                if (dropAccumulator != null) {
+                    dropAccumulator.addAll(drops);
+                } else {
+                    List<ItemStack> merged = clumpStacks(drops);
+                    spawnStacks(world, pos, merged, player);
+                }
+            } else {
+                spawnStacks(world, pos, drops, player);
+            }
         } else {
             state.getBlock().onBroken(world, pos, state);
         }
@@ -275,4 +311,80 @@ public class SimpleTreeHarvester implements ModInitializer {
 
         return tool.isEmpty();
     }
+
+    private static boolean canCombine(ItemStack a, ItemStack b) {
+        if (a == null || b == null) return false;
+        if (a.isEmpty() || b.isEmpty()) return false;
+        if (a.getItem() != b.getItem()) return false;
+
+        return a.getDamage() == b.getDamage();
+    }
+
+    private static List<ItemStack> clumpStacks(List<ItemStack> drops) {
+        ArrayList<ItemStack> merged = new ArrayList<>();
+
+        for (ItemStack drop : drops) {
+            if (drop == null || drop.isEmpty()) continue;
+
+            int remaining = drop.getCount();
+
+            // try merge
+            for (ItemStack existing : merged) {
+                if (!canCombine(existing, drop)) continue;
+
+                int space = existing.getMaxCount() - existing.getCount();
+                if (space <= 0) continue;
+
+                int toMove = Math.min(space, remaining);
+                existing.increment(toMove);
+                remaining -= toMove;
+
+                if (remaining == 0) break;
+            }
+
+            // if item count > maxStack, create new stack
+            while (remaining > 0) {
+                int toCreate = Math.min(drop.getMaxCount(), remaining);
+                ItemStack copy = drop.copy();
+                copy.setCount(toCreate);
+                merged.add(copy);
+                remaining -= toCreate;
+            }
+        }
+
+        return merged;
+    }
+
+    private static void spawnStacks(ServerWorld world, BlockPos pos, List<ItemStack> stacks, @Nullable PlayerEntity player) {
+        for (ItemStack stack : stacks) {
+            if (stack == null || stack.isEmpty()) continue;
+
+            if (CFG.placeItemsInInventory && player != null && !player.isSpectator()) {
+                giveItems(player, stack);
+            } else {
+                ItemScatterer.spawn(
+                        world,
+                        pos.getX() + 0.5,
+                        pos.getY() + 0.5,
+                        pos.getZ() + 0.5,
+                        stack
+                );
+            }
+        }
+    }
+
+    private static void giveItems(PlayerEntity player, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return;
+
+        if (player.getInventory().insertStack(stack) && stack.isEmpty()) return;
+
+        if (!stack.isEmpty()) {
+            net.minecraft.entity.ItemEntity itemEntity = player.dropItem(stack, false);
+            if (itemEntity != null) {
+                itemEntity.resetPickupDelay();
+                itemEntity.setOwner(player.getUuid());
+            }
+        }
+    }
+
 }
